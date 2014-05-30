@@ -7,7 +7,7 @@ import select
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Bind the socket to the port
-server_address = ('127.0.0.1', 4444)
+server_address = ('192.168.1.1', 4444)
 sock.bind(server_address)
 
 # Listen for incoming connections
