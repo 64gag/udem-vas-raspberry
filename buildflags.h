@@ -6,28 +6,24 @@
 #ifndef BUILDFLAGS_H_
 #define BUILDFLAGS_H_
 
+ #define IMG_W 320
+ #define IMG_H 240
+
  #define DEBUG		0
- #define SANITY_CHECKS	0
- #define STATIC_ALLOC	1
  #define PRINT_TIME	1
  #define TRIG_LOOKUP	1
 
  /* These are constants and should probably be defined as such instead */
- #define IMG_W		640
- #define IMG_H		480
  #define LINES_FACTOR	3
  #define LINES_INITIAL	20
 
- #define ITERATIONS	1
-
- #define WAIT_KEY	0
+ #define DRAW_INPUT     0
  #define DRAW_ACCUM	0
  #define DRAW_OUTPUT	0
- #define LOAD_BMP_SDL	1
- #define SDL_USED	DRAW_ACCUM || DRAW_OUTPUT || LOAD_BMP_SDL
+ #define SDL_USED	DRAW_INPUT | DRAW_ACCUM | DRAW_OUTPUT
 
- #define ARGB_R 0x00ff0000
- #define ARGB_G 0x0000ff00
- #define ARGB_B 0x000000ff
-
+ #define OV7670		0
+ #define USBSTREAM	1
+ #define FAKESTREAM	0
+ #define JPEGALLOC	131072
 #endif

@@ -85,10 +85,4 @@ inline void clear_lines(lines_t *v);
 
 int uniform_distribution(int rangeLow, int rangeHigh);
 
-#if SDL_USED
- inline Uint32 get_pixel32( SDL_Surface *surface, int x, int y );
- inline void put_pixel32( SDL_Surface *surface, int x, int y, Uint32 pixel );
- inline void wait();
-#endif
-
 #endif /* HOUGH_H_ */
