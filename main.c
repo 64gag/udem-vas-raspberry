@@ -1,3 +1,4 @@
+//mjpg_streamer -i "input_uvc.so -r 320x240 -q 80" -o "output_http.so -p 8090"
 #include "buildflags.h"
 #include "prob_hough.h"
 #include <time.h>
@@ -5,7 +6,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-
 
 #if SDL_USED
  #include <SDL/SDL.h>
@@ -38,7 +38,7 @@ const int img_h = IMG_H;
 
 int main( int argc, char** argv )
 {
-	uint32_t width=174, height=145, divider=6, bpp=2, format=0, frames=10; /* Options and its defaults */
+	uint32_t divider=6, bpp=2, format=0, frames=10; /* Options and its defaults */
 	uint32_t i, j, k; /* Loop counters */
 
 	img_t in, gauss, out;
@@ -62,12 +62,6 @@ int main( int argc, char** argv )
 				break;
 			case 'p':
 				format = atoi(optarg);
-				break;
-			case 'w':
-				width = atoi(optarg);
-				break;
-			case 'h':
-				height = atoi(optarg);
 				break;
 			case 'd':
 				divider = atoi(optarg);
@@ -137,108 +131,93 @@ int main( int argc, char** argv )
 	out.d = out_img_data;
 	HT.accu = hough_accumulator;
 
-	#if DEBUG
-		printf("%d", ((IMG_W + IMG_H) * 2 + 1)*180); /* Size of allocated memory blocks */
-	#endif
-
 	#if SDL_USED
 		/* Initialize SDL if needed */
 		SDL_Surface *screen = NULL;
 		SDL_Color colors[256];
 		SDL_Init(SDL_INIT_EVERYTHING);
-		screen = SDL_SetVideoMode(width, height, 8, SDL_HWSURFACE);
+		#if DRAW_INPUT
+			screen = SDL_SetVideoMode(IMG_W, IMG_H, 8, SDL_HWSURFACE);
 
-		for(i=0; i<256; i++){
-			colors[i].r = i; colors[i].g = i; colors[i].b = i;
-		}
+			for(i=0; i<256; i++){
+				colors[i].r = i; colors[i].g = i; colors[i].b = i;
+			}
 
-		SDL_SetPalette(screen, SDL_LOGPAL|SDL_PHYSPAL, colors, 0, 256);
+			SDL_SetPalette(screen, SDL_LOGPAL|SDL_PHYSPAL, colors, 0, 256);
+		#else /* DRAW_OUTPUT*/
+			screen = SDL_SetVideoMode(IMG_W, IMG_H, 32, SDL_HWSURFACE);
+		#endif
+
 	#endif
 
 /* This is what would be looped */
 #if PRINT_TIME
+	printf("Start cronometer\n");
 	clock_t start = clock();
 #endif
 
-for(k=0; k<200; k++){
-	#if OV7670
-		/* Get frame into memory */
-		bcm2835_gpio_clr(PIN_REQUEST); 		/* Signal the STM32 we gant a frame */
-		while(bcm2835_gpio_lev(PIN_READY));	/* Wait some some microseconds until it is ready */
-		bcm2835_gpio_set(PIN_REQUEST);		/* Signal the STM32 we know it is ready */
-		readFrame(image, width*height*bpp, 0);	/* Get the frame */
-		uint16_t *p = (uint16_t*)(&image[5]);
-		uint8_t *sp = in_img_data;
-		for(i=0; i<height*width; i++){
-			*sp++ = (uint8_t)(*p++);
-		}
-	#endif
-
-	#if USBSTREAM
-		downloadFrame(raw_image, rgb_image, in_img_data);
-	#endif
-	#if DRAW_INPUT
-		uint8_t *p = (uint8_t*)(in_img_data);
-		uint8_t *sp = (uint8_t*)screen->pixels;
-		for(i=0; i<height; i++){
-			for(j=0; j<width; j++){
+	for(k=0; k<frames; k++){
+		#if OV7670
+			/* Get frame into memory */
+			bcm2835_gpio_clr(PIN_REQUEST); 		/* Signal the STM32 we want a frame */
+			while(bcm2835_gpio_lev(PIN_READY));	/* Wait some some microseconds until it is ready */
+			bcm2835_gpio_set(PIN_REQUEST);		/* Signal the STM32 we know it is ready */
+			readFrame(image, width*height*bpp, 0);	/* Get the frame */
+			uint16_t *p = (uint16_t*)(&image[5]);
+			uint8_t *sp = in_img_data;
+			for(i=0; i<IMG_H*IMG_W; i++){
 				*sp++ = (uint8_t)(*p++);
 			}
-//			sp += 2;
-		}
-		SDL_Flip(screen);
-		usleep(1000000);
-	#endif
+		#endif
 
-	gaussian_noise_reduce(&in, &gauss);	/* Pre-edge detection: some blurring */
-	canny_edge_detect(&gauss, &out);	/* Actual edge detection */
+		#if USBSTREAM
+			downloadFrame(raw_image, rgb_image, in_img_data);
+		#endif
 
-	#if DRAW_OUTPUT
-		screen = SDL_SetVideoMode(IMG_W, IMG_H, 32, SDL_HWSURFACE);
-		uint8_t *p = (uint8_t*)(out_img_data);
-		uint32_t *sp = (uint32_t*)screen->pixels;
-		for(i=0; i<height; i++){
-			for(j=0; j<width; j++){
-				*sp++ = (uint32_t)((*p++)*0xff010101UL);
-			}
-//			sp += 2;
-		}
-	#endif
-
-	init_hough(&HT);
-	phough_transform(&out, &HT); /* Transform */
-
-	#if DEBUG
-		printf("Accumulator info:\n \timage \tw: %d, h: %d\n", HT.img_w, HT.img_h);
-		printf("\taccum \tw: %d, h: %d, max: %d\n", HT.w, HT.h, HT.max);
-	#endif
-
-	#if DRAW_OUTPUT
-//		screen = SDL_SetVideoMode(IMG_W, IMG_H, 32, SDL_HWSURFACE);
-		for(i=0; i<HT.l->count; i++){ /* Draw all the detected lines */
-			lineRGBA(screen, HT.l->l[i].x1, HT.l->l[i].y1, HT.l->l[i].x2, HT.l->l[i].y2, 0xff, 0, 0, 0xff);
-		}
-		SDL_Flip(screen);
-		usleep(1000000);
-	#endif
-
-
-	#if DRAW_ACCUM
-		screen = SDL_SetVideoMode(HT.w, HT.h, 8, SDL_HWSURFACE); /* Set the window to accumulator's size */
-		{
+		#if DRAW_INPUT
+			uint8_t *p = (uint8_t*)(in_img_data);
 			uint8_t *sp = (uint8_t*)screen->pixels;
-			uint8_t p;
-			for(i=0; i<HT.h; i++){ /* Loop through every pixel */
-				for(j=0; j<HT.w; j++){
-					p = 0xff*(1-(float)HT.accu[i*HT.w + j]/(float)HT.max); /* Maximize contrast */
-					*sp++ = p;
-				}
+			for(i=0; i<IMG_H*IMG_W; i++){
+				*sp++ = (uint8_t)(*p++);
+
+				#if IMG_W==174
+					sp += 2;
+				#endif
 			}
-		}
-		SDL_Flip(screen); /* Flush to window */
-		usleep(1000000);
-	#endif
-}
+			SDL_Flip(screen);
+		#endif
+
+		gaussian_noise_reduce(&in, &gauss);	/* Pre-edge detection: some blurring */
+		canny_edge_detect(&gauss, &out);	/* Actual edge detection */
+
+		#if DRAW_OUTPUT
+			uint8_t *p = (uint8_t*)(out_img_data);
+			uint32_t *sp = (uint32_t*)screen->pixels;
+			for(i=0; i<IMG_H*IMG_W; i++){
+				*sp++ = (uint32_t)(0xff000000UL|(*p++)*0x010101UL);
+
+				#if IMG_W==174
+					sp += 2;
+				#endif
+			}
+		#endif
+
+		init_hough(&HT);
+		phough_transform(&out, &HT); /* Transform */
+
+		#if DEBUG
+			printf("Accumulator info:\n \timage \tw: %d, h: %d\n", HT.img_w, HT.img_h);
+			printf("\taccum \tw: %d, h: %d, max: %d\n", HT.w, HT.h, HT.max);
+		#endif
+
+		#if DRAW_OUTPUT
+			/* Draw all the detected lines in red */
+			for(i=0; i<HT.l->count; i++){ 
+				lineRGBA(screen, HT.l->l[i].x1, HT.l->l[i].y1, HT.l->l[i].x2, HT.l->l[i].y2, 0xff, 0, 0, 0xff);
+			}
+			SDL_Flip(screen);
+		#endif
+	}
 
 #if PRINT_TIME
 	printf("Hough transform - time elapsed: %f\n", ((double)clock() - start) / CLOCKS_PER_SEC);
@@ -299,7 +278,7 @@ for(k=0; k<200; k++){
 	struct jpeg_decompress_struct cinfo;
 	struct jpeg_error_mgr jerr;
 	JSAMPROW row_pointer[1];
-
+	unsigned char row_static[3*IMG_W];
 	unsigned long location = 0;
 	int i = 0;
 	cinfo.err = jpeg_std_error(&jerr);
@@ -309,9 +288,7 @@ for(k=0; k<200; k++){
 	jpeg_read_header(&cinfo, TRUE);
 	jpeg_start_decompress(&cinfo);
 
-//	size = cinfo.output_width*cinfo.output_height*cinfo.num_components;
-
-	row_pointer[0] = (unsigned char *)malloc(cinfo.output_width*cinfo.num_components);
+	row_pointer[0] = row_static;
 
 	while (cinfo.output_scanline < cinfo.image_height) {
 		jpeg_read_scanlines( &cinfo, row_pointer, 1 );
@@ -321,7 +298,6 @@ for(k=0; k<200; k++){
 	}
 	jpeg_finish_decompress(&cinfo);
 	jpeg_destroy_decompress(&cinfo);
-	free(row_pointer[0]);
 
 	return 1;
  }
@@ -336,33 +312,44 @@ for(k=0; k<200; k++){
 
 	curl_handle = curl_easy_init();
 
-	#if FAKESTREAM
-		curl_easy_setopt(curl_handle, CURLOPT_URL, "http://127.0.0.1/input.jpg");
+	#if LOCALSTREAM
+		curl_easy_setopt(curl_handle, CURLOPT_URL, "http://127.0.0.1/?action=snapshot");
 	#else
 		curl_easy_setopt(curl_handle, CURLOPT_URL, "http://172.16.100.76/?action=snapshot");
-		curl_easy_setopt(curl_handle, CURLOPT_PORT , 8090);
 	#endif
 
+	curl_easy_setopt(curl_handle, CURLOPT_PORT , 8090);
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
 	curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&block);
 	curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
 
 	res = curl_easy_perform(curl_handle);
+	#ifndef BRIGHTSIDE
 	if(res != CURLE_OK) {
 		fprintf(stderr, "curl_easy_perform() failed: %s\n",
 		curl_easy_strerror(res));
 	}
 	else { /* HTTP success */
 		if (jpeg_inflate((unsigned char*)block.memory, block.size, rgb_data) > 0) {
+	#else
+		jpeg_inflate((unsigned char*)block.memory, block.size, rgb_data);
+	#endif
 		/* JPEG inflated, now get grayscale */
 			uint32_t i;
 			for(i=0; i<IMG_H*IMG_W; i++){
 			/* Store into the final buffer */
-				*grayscale_data++ = (*rgb_data + *(rgb_data+1) + *(rgb_data+2))/3; /* Grayscale */
+				#if GRAY_AVG
+					*grayscale_data++ = (*rgb_data + *(rgb_data+1) + *(rgb_data+2))/3;
+				#endif
+				#if GRAY_GRN
+					*grayscale_data++ = *(rgb_data+1);
+				#endif
 				rgb_data += 3;
 			}
+	#ifndef BRIGHTSIDE
 		}
 	}
+	#endif
 
 	/* cleanup curl stuff */
 	curl_easy_cleanup(curl_handle);

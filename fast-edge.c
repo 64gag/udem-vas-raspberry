@@ -40,18 +40,13 @@
 	otherwise the required intermediate arrays will be dynamically allocated.
 	If IMG_W and IMG_H are defined, the arrays will be allocated in the compiler directive that follows:
 */
-#ifdef IMG_W 
+
 int g[IMG_W  * IMG_H], dir[IMG_W  * IMG_H] = {0};
 unsigned char img_scratch_data[IMG_W  * IMG_H] = {0};
-#endif
+
 void canny_edge_detect(struct img * img_in, struct img * img_out) {
 	struct img img_scratch;
 	int high, low;
-	#ifndef IMG_W
-	int * g = malloc(img_in->w * img_in->h * sizeof(int));
-	int * dir = malloc(img_in->w * img_in->h * sizeof(int));
-	unsigned char * img_scratch_data = malloc(img_in->w * img_in->h * sizeof(char));
-	#endif
 
 	img_scratch.w = img_in->w;
 	img_scratch.h = img_in->h;
@@ -62,12 +57,6 @@ void canny_edge_detect(struct img * img_in, struct img * img_out) {
 	non_max_suppression(&img_scratch, g, dir);
 	estimate_threshold(&img_scratch, &high, &low);
 	hysteresis(high, low, &img_scratch, img_out);
-
-	#ifndef IMG_W
-	free(g);
-	free(dir);
-	free(img_scratch_data);
-	#endif
 }
 
 /*

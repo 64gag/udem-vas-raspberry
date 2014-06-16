@@ -7,11 +7,6 @@
  #include <SDL/SDL_gfxPrimitives.h>
 #endif
 
-typedef struct point {
-	int x;
-	int y;
-} point_t;
-
 typedef struct line {
 	int x1;
 	int y1;
@@ -50,7 +45,6 @@ typedef struct phough {
 	int max;
 	int *accu;
 	lines_t * l;
-
 
 	int threshold;
 	int line_length;

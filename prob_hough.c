@@ -1,12 +1,5 @@
 // **********************************************************************************
 //
-// BSD License.
-// This file is part of a Hough Transformation tutorial,
-// see: http://www.keymolen.com/2013/05/hough-transformation-c-implementation.html
-//
-// Copyright (c) 2013, Bruno Keymolen, email: bruno.keymolen@gmail.com
-// All rights reserved.
-//
 // This code was ported to C and heavily modified by Pedro Aguiar if something
 // does not work it is probably his fault :). paguiar32@gmail.com
 //
@@ -31,7 +24,7 @@
 int phough_transform(img_t *img, phough_t *hs)
 {
 	srand (time(NULL));
-	line_t p = {0} ;
+	line_t p = {0};
 
 	int width = img->w;
 	int height = img->h;
@@ -46,10 +39,6 @@ int phough_transform(img_t *img, phough_t *hs)
 		for(p.x1 = 0; p.x1 < width; p.x1++ ){
 			if(img->d[p.y1*width + p.x1]){
 				img->d[p.y1*width + p.x1] = 1;
-//				if(p.x1>3)
-//					img->d[p.y1*width + p.x1 - 1] = 1;
-					//img->d[p.y1*width + p.x1 - 2] = 1;
-//					img->d[p.y1*width + p.x1 - 3] = 1;
 				pushback_lines(&nzloc, &p);
 			}
 		}
@@ -62,7 +51,6 @@ int phough_transform(img_t *img, phough_t *hs)
 		printf("numangle: %d, numrho: %d, count: %d\n", numangle, numrho, count);
 	#endif
 	line_t *tmp;
-	int costs = 0;
 	for(/**/; count > 0; count--)
 	{
 		// choose random point out of the remaining ones
@@ -78,18 +66,7 @@ int phough_transform(img_t *img, phough_t *hs)
 //		int i = hs->l->lp[idx]->y1, j = hs->l->lp[idx]->x1;
 
 		int good_line;
-		const int shift = 16;
-
-		/*
-		if(costs<5){
-			printf("%X ", nzloc.lp[nzloc.count-1]);
-			printf("%X ", nzloc.lp[nzloc.count-2]);
-			printf("%X ", nzloc.lp[nzloc.count-3]);
-			printf("%X ", nzloc.lp[nzloc.count-4]);
-			printf("%X \n", nzloc.lp[nzloc.count-5]);
-			costs++;
-		}
-		*/
+		const int shift = 16;		
 
 		#if 1
 		//	printf("Before: %X, ", nzloc.lp[idx]);
@@ -240,9 +217,9 @@ inline void init_hough(phough_t *hs)
 	hs->max = 0;
 
 	hs->rho = 1;
-	hs->threshold = 50;
+	hs->threshold = 40;
 	hs->theta = 180;
-	hs->line_length = 50;
+	hs->line_length = 25;
 	hs->line_gap = 5;
 	hs->line_max = 2000;
 
@@ -340,7 +317,6 @@ inline void pushback_lines(lines_t* v, line_t* new)
  */
 int uniform_distribution(int rangeLow, int rangeHigh)
 {
-
 	double myRand = rand()/(1.0 + RAND_MAX); 
 	int range = rangeHigh - rangeLow + 1;
 	int myRand_scaled = (myRand * range) + rangeLow;
