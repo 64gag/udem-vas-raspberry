@@ -12,7 +12,9 @@ typedef struct line {
 	int y1;
 	int x2;
 	int y2;
-	int s;
+	int slope;
+	int len;
+	int d2c;
 } line_t;
 
 /*

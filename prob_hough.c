@@ -21,6 +21,10 @@
 
 #define PI 3.1416f
 
+extern int arg_threshold;
+extern int arg_length;
+extern int arg_gap;
+
 int phough_transform(img_t *img, phough_t *hs)
 {
 	srand (time(NULL));
@@ -63,7 +67,6 @@ int phough_transform(img_t *img, phough_t *hs)
 
 		int *adata = hs->accu;
 		int i = nzloc.lp[idx]->y1, j = nzloc.lp[idx]->x1;
-//		int i = hs->l->lp[idx]->y1, j = hs->l->lp[idx]->x1;
 
 		int good_line;
 		const int shift = 16;		
@@ -217,10 +220,10 @@ inline void init_hough(phough_t *hs)
 	hs->max = 0;
 
 	hs->rho = 1;
-	hs->threshold = 40;
+	hs->threshold = arg_threshold;
 	hs->theta = 180;
-	hs->line_length = 25;
-	hs->line_gap = 5;
+	hs->line_length = arg_length;
+	hs->line_gap = arg_gap;
 	hs->line_max = 2000;
 
 

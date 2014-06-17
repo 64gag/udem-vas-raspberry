@@ -1,4 +1,4 @@
-//mjpg_streamer -i "input_uvc.so -r 320x240 -q 80" -o "output_http.so -p 8090"
+//mjpg_streamer -i "input_uvc.so -r 320x240 -q 75 -f 30" -o "output_http.so -p 8090"
 #include "buildflags.h"
 #include "prob_hough.h"
 #include <time.h>
@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <signal.h>
+#include <math.h>
 
 #if SDL_USED
  #include <SDL/SDL.h>
@@ -16,6 +18,7 @@
  #include <string.h>
  #include <jpeglib.h>
  #include <curl/curl.h>
+ #include "map.h"
 #endif
 
 #if OV7670
@@ -25,6 +28,8 @@
 
  int readFrame(uint8_t *frameData, uint32_t frameSize, uint32_t options);
 #endif
+
+
 
 #if USBSTREAM
  struct mem_t {
@@ -36,10 +41,23 @@
 const int img_w = IMG_W; /* Should change to use these later, focusing on speed right now */
 const int img_h = IMG_H;
 
+int arg_threshold = 36;
+int arg_length = 45;
+int arg_gap = 3;
+uint32_t run=1;
+
+void sigintHandler(int sig_num)
+{
+	run = 0;
+}
+
 int main( int argc, char** argv )
 {
-	uint32_t divider=6, bpp=2, format=0, frames=10; /* Options and its defaults */
+	uint32_t divider=6, bpp=2, format=0; /* Options and its defaults */
 	uint32_t i, j, k; /* Loop counters */
+
+	char setpoint=0x40;
+	int map_i=0;
 
 	img_t in, gauss, out;
 
@@ -54,12 +72,9 @@ int main( int argc, char** argv )
 	/* Commandline arguments and options handling */
 	int o, index;
 	opterr = 0;
-	while ((o = getopt (argc, argv, ":p:w:h:d:f:b:")) != -1){
+	while ((o = getopt (argc, argv, ":p:d:b:t:g:l:")) != -1){
 		switch (o)
 		{
-			case 'f':
-				frames = atoi(optarg);
-				break;
 			case 'p':
 				format = atoi(optarg);
 				break;
@@ -68,6 +83,15 @@ int main( int argc, char** argv )
 				break;
 			case 'b':
 				bpp = atoi(optarg);
+				break;
+			case 't':
+				arg_threshold = atoi(optarg);
+				break;
+			case 'l':
+				arg_length = atoi(optarg);
+				break;
+			case 'g':
+				arg_gap = atoi(optarg);
 				break;
 			case ':':
 				fprintf(stderr, "No argument specified to option -%c.\n", optopt);
@@ -152,11 +176,13 @@ int main( int argc, char** argv )
 
 /* This is what would be looped */
 #if PRINT_TIME
-	printf("Start cronometer\n");
-	clock_t start = clock();
+	time_t timer[8];
+	time(&timer[0]);
 #endif
+	signal(SIGINT, sigintHandler);
+	printf("Running!\n");
 
-	for(k=0; k<frames; k++){
+	while(run){
 		#if OV7670
 			/* Get frame into memory */
 			bcm2835_gpio_clr(PIN_REQUEST); 		/* Signal the STM32 we want a frame */
@@ -171,7 +197,13 @@ int main( int argc, char** argv )
 		#endif
 
 		#if USBSTREAM
+			#if PRINT_TIME >= 2
+				time(&timer[1]);
+			#endif
 			downloadFrame(raw_image, rgb_image, in_img_data);
+			#if PRINT_TIME >= 2
+				time(&timer[2]);
+			#endif
 		#endif
 
 		#if DRAW_INPUT
@@ -187,8 +219,14 @@ int main( int argc, char** argv )
 			SDL_Flip(screen);
 		#endif
 
+		#if PRINT_TIME >= 2
+			time(&timer[3]);
+		#endif
 		gaussian_noise_reduce(&in, &gauss);	/* Pre-edge detection: some blurring */
 		canny_edge_detect(&gauss, &out);	/* Actual edge detection */
+		#if PRINT_TIME >= 2
+			time(&timer[4]);
+		#endif
 
 		#if DRAW_OUTPUT
 			uint8_t *p = (uint8_t*)(out_img_data);
@@ -202,8 +240,14 @@ int main( int argc, char** argv )
 			}
 		#endif
 
+		#if PRINT_TIME >= 2
+			time(&timer[5]);
+		#endif
 		init_hough(&HT);
 		phough_transform(&out, &HT); /* Transform */
+		#if PRINT_TIME >= 2
+			time(&timer[6]);
+		#endif
 
 		#if DEBUG
 			printf("Accumulator info:\n \timage \tw: %d, h: %d\n", HT.img_w, HT.img_h);
@@ -215,14 +259,74 @@ int main( int argc, char** argv )
 			for(i=0; i<HT.l->count; i++){ 
 				lineRGBA(screen, HT.l->l[i].x1, HT.l->l[i].y1, HT.l->l[i].x2, HT.l->l[i].y2, 0xff, 0, 0, 0xff);
 			}
+		#endif
+
+		int target=10000, target_i=0x232;
+		for(i=0; i<HT.l->count; i++){ 
+//			HT.l->l[i].len = (int)(sqrt(pow((HT.l->l[i].x2-HT.l->l[i].x1),2) + pow((HT.l->l[i].y2-HT.l->l[i].y1),2)));
+
+//			printf("Line %d x1: %d, x2: %d, y1: %d, y2: %d, s: %d, l: %d\n", i, HT.l->l[i].x1, HT.l->l[i].x2, HT.l->l[i].y1, HT.l->l[i].y2, HT.l->l[i].slope, HT.l->l[i].len);
+			int den = (HT.l->l[i].x2-HT.l->l[i].x1);
+			int num = (HT.l->l[i].y2-HT.l->l[i].y1);
+
+			if(((HT.l->l[i].y2 + HT.l->l[i].y1) >> 1) < 70){ /* Line is too high*/
+				continue;
+			}
+
+			if(!den){
+				HT.l->l[i].slope = 90;
+			}else{
+				if((abs(num) << 7)/abs(den) < 89){ /* Slope smaller than 35 */
+					continue;
+				}
+				HT.l->l[i].slope = 57.2956f*atan(num/den);
+			}
+			HT.l->l[i].d2c = abs(IMG_W - HT.l->l[i].x2 - HT.l->l[i].x1)/2;
+
+			if(HT.l->l[i].d2c < target){
+				target = HT.l->l[i].d2c;
+				target_i = i;
+			}
+		}
+	
+		if(target_i != 0x232){
+			i = target_i;
+			#if DRAW_OUTPUT
+				lineRGBA(screen, HT.l->l[i].x1, HT.l->l[i].y1, HT.l->l[i].x2, HT.l->l[i].y2, 0xff, 0xff, 0, 0xff);
+			#endif
+//			printf("Line %d x1: %d, x2: %d, y1: %d, y2: %d, s: %d, l: %d\n", i, HT.l->l[i].x1, HT.l->l[i].x2, HT.l->l[i].y1, HT.l->l[i].y2, HT.l->l[i].slope, HT.l->l[i].len);
+//			printf("target line d2c: %d\n", HT.l->l[i].d2c);
+			map_i = HT.l->l[i].slope <= 0 ? HT.l->l[i].slope*-1 : 180-HT.l->l[i].slope;
+//			printf("%d %d\n", HT.l->l[i].slope, map_i);
+			setpoint = linemap[map_i];
+			//printf("%.2x\n", setpoint);
+		}
+
+		#if DRAW_OUTPUT
 			SDL_Flip(screen);
+		#endif
+		#if OUT_NC
+			int ret;
+			char output[2] = {0x70, 0x60};
+			output[0] |= (setpoint >> 4);
+			output[1] |= setpoint & 0x0f;
+			char cmd[32];
+			sprintf(cmd,"./setpoint.sh %.2x %.2x", output[0], output[1]);
+			ret = system(cmd);
 		#endif
 	}
 
 #if PRINT_TIME
-	printf("Hough transform - time elapsed: %f\n", ((double)clock() - start) / CLOCKS_PER_SEC);
+	time(&timer[7]);
+	#if PRINT_TIME >= 2
+		printf("Download - time elapsed: %f\n", difftime(timer[2],timer[1]));
+		printf("Edge detection - time elapsed: %f\n", difftime(timer[4],timer[3]));
+		printf("Hough Transform - time elapsed: %f\n", difftime(timer[6],timer[5]));
+	#endif
+	printf("Total - time elapsed: %f\n", difftime(timer[7],timer[0]));
 #endif
 
+	printf("Cleaning up\n");
 	/* Destroy, clean, end, free, etc */
 	#if OV7670
 		bcm2835_spi_end();	/* Properly aligned session finishes here, thank you! */
