@@ -23,7 +23,7 @@
 
 #if OV7670
  #include <bcm2835.h>
- #define PIN_READY RPI_V2_GPIO_P1_15Me
+ #define PIN_READY RPI_V2_GPIO_P1_15
  #define PIN_REQUEST RPI_V2_GPIO_P1_13
 
  int readFrame(uint8_t *frameData, uint32_t frameSize, uint32_t options);
@@ -53,7 +53,10 @@ void sigintHandler(int sig_num)
 
 int main( int argc, char** argv )
 {
-	uint32_t divider=6, bpp=2, format=0; /* Options and its defaults */
+	#if OV7670
+		uint8_t tmp_image[IMG_W*IMG_W*IMG_BPP+OV_EXTRA];
+	#endif
+	uint32_t divider=6, format=0; /* Options and its defaults */
 	uint32_t i, j, k; /* Loop counters */
 
 	char setpoint=0x40;
@@ -72,7 +75,7 @@ int main( int argc, char** argv )
 	/* Commandline arguments and options handling */
 	int o, index;
 	opterr = 0;
-	while ((o = getopt (argc, argv, ":p:d:b:t:g:l:")) != -1){
+	while ((o = getopt (argc, argv, ":p:d:t:g:l:")) != -1){
 		switch (o)
 		{
 			case 'p':
@@ -80,9 +83,6 @@ int main( int argc, char** argv )
 				break;
 			case 'd':
 				divider = atoi(optarg);
-				break;
-			case 'b':
-				bpp = atoi(optarg);
 				break;
 			case 't':
 				arg_threshold = atoi(optarg);
@@ -102,7 +102,6 @@ int main( int argc, char** argv )
 	}
 
 	#if OV7670
-		uint8_t tmp_image[width*height*bpp];
 		if (!bcm2835_init()){
 			fprintf(stderr, "bc2835_init() error!\n");
 			return 1;
@@ -136,10 +135,11 @@ int main( int argc, char** argv )
 			bcm2835_gpio_clr(PIN_REQUEST); 		/* Signal the STM32 we gant a frame */
 			while(bcm2835_gpio_lev(PIN_READY));	/* Wait some some microseconds until it is ready */
 			bcm2835_gpio_set(PIN_REQUEST);		/* Signal the STM32 we know it is ready */
-			readFrame(image, width*height*bpp, 0);	/* Get the frame */
-		}while(image[0] != 0xcc);
+			readFrame(tmp_image, IMG_W*IMG_H*IMG_BPP+OV_EXTRA, format);	/* Get the frame */
+		}while(tmp_image[0] != 0xcc);
 		bcm2835_spi_begin();
 	#endif
+
 	#if USBSTREAM
 		uint8_t raw_image[JPEGALLOC];
 		uint8_t rgb_image[IMG_W*IMG_H*3];
@@ -171,7 +171,6 @@ int main( int argc, char** argv )
 		#else /* DRAW_OUTPUT*/
 			screen = SDL_SetVideoMode(IMG_W, IMG_H, 32, SDL_HWSURFACE);
 		#endif
-
 	#endif
 
 /* This is what would be looped */
@@ -185,15 +184,16 @@ int main( int argc, char** argv )
 	while(run){
 		#if OV7670
 			/* Get frame into memory */
-			bcm2835_gpio_clr(PIN_REQUEST); 		/* Signal the STM32 we want a frame */
+			bcm2835_gpio_clr(PIN_REQUEST); 		/* Signal the STM32 we gant a frame */
 			while(bcm2835_gpio_lev(PIN_READY));	/* Wait some some microseconds until it is ready */
 			bcm2835_gpio_set(PIN_REQUEST);		/* Signal the STM32 we know it is ready */
-			readFrame(image, width*height*bpp, 0);	/* Get the frame */
-			uint16_t *p = (uint16_t*)(&image[5]);
-			uint8_t *sp = in_img_data;
+			readFrame(tmp_image, IMG_W*IMG_H*IMG_BPP+OV_EXTRA, 0);	/* Get the frame */
+			uint16_t *ov_p = (uint16_t*)(&tmp_image[5]);
+			uint8_t *ov_sp = in_img_data;
 			for(i=0; i<IMG_H*IMG_W; i++){
-				*sp++ = (uint8_t)(*p++);
+				*ov_sp++ = (uint8_t)(*ov_p++);
 			}
+		
 		#endif
 
 		#if USBSTREAM
@@ -206,18 +206,6 @@ int main( int argc, char** argv )
 			#endif
 		#endif
 
-		#if DRAW_INPUT
-			uint8_t *p = (uint8_t*)(in_img_data);
-			uint8_t *sp = (uint8_t*)screen->pixels;
-			for(i=0; i<IMG_H*IMG_W; i++){
-				*sp++ = (uint8_t)(*p++);
-
-				#if IMG_W==174
-					sp += 2;
-				#endif
-			}
-			SDL_Flip(screen);
-		#endif
 
 		#if PRINT_TIME >= 2
 			time(&timer[3]);
@@ -228,14 +216,29 @@ int main( int argc, char** argv )
 			time(&timer[4]);
 		#endif
 
+		#if DRAW_INPUT
+			uint8_t *p = (uint8_t*)(out_img_data);
+			uint8_t *sp = (uint8_t*)screen->pixels;
+			for(i=0; i<IMG_H; i++){
+				for(j=0; j<IMG_W; j++){
+					*sp++ = (uint8_t)(*p++);
+				}
+				#if IMG_W==174
+					sp += 2;
+				#endif
+			}
+		#endif
+
 		#if DRAW_OUTPUT
 			uint8_t *p = (uint8_t*)(out_img_data);
 			uint32_t *sp = (uint32_t*)screen->pixels;
-			for(i=0; i<IMG_H*IMG_W; i++){
-				*sp++ = (uint32_t)(0xff000000UL|(*p++)*0x010101UL);
 
+			for(i=0; i<IMG_H; i++){
+				for(j=0; j<IMG_W; j++){
+					*sp++ = (uint32_t)(0xff000000UL|(*p++)*0x010101UL);
+				}
 				#if IMG_W==174
-					sp += 2;
+				//	sp += 2;
 				#endif
 			}
 		#endif
@@ -243,8 +246,10 @@ int main( int argc, char** argv )
 		#if PRINT_TIME >= 2
 			time(&timer[5]);
 		#endif
+
 		init_hough(&HT);
 		phough_transform(&out, &HT); /* Transform */
+
 		#if PRINT_TIME >= 2
 			time(&timer[6]);
 		#endif
@@ -261,58 +266,61 @@ int main( int argc, char** argv )
 			}
 		#endif
 
-		int target=10000, target_i=0x232;
-		for(i=0; i<HT.l->count; i++){ 
-//			HT.l->l[i].len = (int)(sqrt(pow((HT.l->l[i].x2-HT.l->l[i].x1),2) + pow((HT.l->l[i].y2-HT.l->l[i].y1),2)));
+		#if SLOPE_OUTPUT
+			int target=10000, target_i=0x232;
+			for(i=0; i<HT.l->count; i++){ 
+	//			HT.l->l[i].len = (int)(sqrt(pow((HT.l->l[i].x2-HT.l->l[i].x1),2) + pow((HT.l->l[i].y2-HT.l->l[i].y1),2)));
 
-//			printf("Line %d x1: %d, x2: %d, y1: %d, y2: %d, s: %d, l: %d\n", i, HT.l->l[i].x1, HT.l->l[i].x2, HT.l->l[i].y1, HT.l->l[i].y2, HT.l->l[i].slope, HT.l->l[i].len);
-			int den = (HT.l->l[i].x2-HT.l->l[i].x1);
-			int num = (HT.l->l[i].y2-HT.l->l[i].y1);
+	//			printf("Line %d x1: %d, x2: %d, y1: %d, y2: %d, s: %d, l: %d\n", i, HT.l->l[i].x1, HT.l->l[i].x2, HT.l->l[i].y1, HT.l->l[i].y2, HT.l->l[i].slope, HT.l->l[i].len);
+				int den = (HT.l->l[i].x2-HT.l->l[i].x1);
+				int num = (HT.l->l[i].y2-HT.l->l[i].y1);
 
-			if(((HT.l->l[i].y2 + HT.l->l[i].y1) >> 1) < 70){ /* Line is too high*/
-				continue;
-			}
-
-			if(!den){
-				HT.l->l[i].slope = 90;
-			}else{
-				if((abs(num) << 7)/abs(den) < 89){ /* Slope smaller than 35 */
+				if(((HT.l->l[i].y2 + HT.l->l[i].y1) >> 1) < 70){ /* Line is too high*/
 					continue;
 				}
-				HT.l->l[i].slope = 57.2956f*atan(num/den);
-			}
-			HT.l->l[i].d2c = abs(IMG_W - HT.l->l[i].x2 - HT.l->l[i].x1)/2;
 
-			if(HT.l->l[i].d2c < target){
-				target = HT.l->l[i].d2c;
-				target_i = i;
+				if(!den){
+					HT.l->l[i].slope = 90;
+				}else{
+					if((abs(num) << 7)/abs(den) < 89){ /* Slope smaller than 35 */
+						continue;
+					}
+					HT.l->l[i].slope = 57.2956f*atan(num/den);
+				}
+				HT.l->l[i].d2c = abs(IMG_W - HT.l->l[i].x2 - HT.l->l[i].x1)/2;
+
+				if(HT.l->l[i].d2c < target){
+					target = HT.l->l[i].d2c;
+					target_i = i;
+				}
 			}
-		}
 	
-		if(target_i != 0x232){
-			i = target_i;
-			#if DRAW_OUTPUT
-				lineRGBA(screen, HT.l->l[i].x1, HT.l->l[i].y1, HT.l->l[i].x2, HT.l->l[i].y2, 0xff, 0xff, 0, 0xff);
-			#endif
-//			printf("Line %d x1: %d, x2: %d, y1: %d, y2: %d, s: %d, l: %d\n", i, HT.l->l[i].x1, HT.l->l[i].x2, HT.l->l[i].y1, HT.l->l[i].y2, HT.l->l[i].slope, HT.l->l[i].len);
-//			printf("target line d2c: %d\n", HT.l->l[i].d2c);
-			map_i = HT.l->l[i].slope <= 0 ? HT.l->l[i].slope*-1 : 180-HT.l->l[i].slope;
-//			printf("%d %d\n", HT.l->l[i].slope, map_i);
-			setpoint = linemap[map_i];
-			//printf("%.2x\n", setpoint);
-		}
+			if(target_i != 0x232){
+				i = target_i;
+				#if DRAW_OUTPUT
+					lineRGBA(screen, HT.l->l[i].x1, HT.l->l[i].y1, HT.l->l[i].x2, HT.l->l[i].y2, 0xff, 0xff, 0, 0xff);
+				#endif
+//				printf("Line %d x1: %d, x2: %d, y1: %d, y2: %d, s: %d, l: %d\n", i, HT.l->l[i].x1, HT.l->l[i].x2, HT.l->l[i].y1, HT.l->l[i].y2, HT.l->l[i].slope, HT.l->l[i].len);
+	//			printf("target line d2c: %d\n", HT.l->l[i].d2c);
+				map_i = HT.l->l[i].slope <= 0 ? HT.l->l[i].slope*-1 : 180-HT.l->l[i].slope;
+	//			printf("%d %d\n", HT.l->l[i].slope, map_i);
+				setpoint = linemap[map_i];
+				//printf("%.2x\n", setpoint);
+			}
 
-		#if DRAW_OUTPUT
-			SDL_Flip(screen);
+			#if OUT_NC
+				int ret;
+				char output[2] = {0x70, 0x60};
+				output[0] |= (setpoint >> 4);
+				output[1] |= setpoint & 0x0f;
+				char cmd[32];
+				sprintf(cmd,"./setpoint.sh %.2x %.2x", output[0], output[1]);
+				ret = system(cmd);
+			#endif
 		#endif
-		#if OUT_NC
-			int ret;
-			char output[2] = {0x70, 0x60};
-			output[0] |= (setpoint >> 4);
-			output[1] |= setpoint & 0x0f;
-			char cmd[32];
-			sprintf(cmd,"./setpoint.sh %.2x %.2x", output[0], output[1]);
-			ret = system(cmd);
+
+		#if SDL_USED
+			SDL_Flip(screen);
 		#endif
 	}
 

@@ -6,9 +6,11 @@
 #ifndef BUILDFLAGS_H_
 #define BUILDFLAGS_H_
 
- #define IMG_W 		320
- #define IMG_H 		240
- #define OUT_NC		1
+ #define IMG_W 		174
+ #define IMG_H 		144
+ #define IMG_BPP	2
+ #define OUT_NC		0
+ #define SLOPE_OUTPUT	0
 
  #define DEBUG		0
  #define PRINT_TIME	0
@@ -24,12 +26,13 @@
  #define LINES_INITIAL	20
  #define LINES_FACTOR	5
 
- #define DRAW_INPUT     0
+ #define DRAW_INPUT     1
  #define DRAW_OUTPUT	0
  #define SDL_USED	DRAW_INPUT | DRAW_OUTPUT
 
- #define OV7670		0
- #define USBSTREAM	1
- #define LOCALSTREAM	1
+ #define OV7670		1
+ #define OV_EXTRA	64
+ #define USBSTREAM	0
+ #define LOCALSTREAM	0
  #define JPEGALLOC	131072
 #endif
